@@ -205,9 +205,18 @@ app.post('/convert', upload.single('fbxFile'), async (req, res) => {
 });
 
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+  const indexPath = path.join(__dirname, 'public', 'index.html');
+  console.log(`Serving index.html from: ${indexPath}`);
+  console.log(`File exists: ${fs.existsSync(indexPath)}`);
+  res.sendFile(indexPath);
+});
+
+// Fallback for 404 errors
+app.use((req, res) => {
+  res.status(404).send('Page not found');
 });
 
 app.listen(port, () => {
   console.log(`FBX2VRMA Converter UI running on port ${port}`);
+  console.log(`Static files served from: ${path.join(__dirname, 'public')}`);
 });

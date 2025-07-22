@@ -3,7 +3,7 @@ services:
     name: fbx2vrma-converter-ui
     env: node
     plan: free
-    buildCommand: npm install && chmod +x setup.sh && ./setup.sh
+    buildCommand: npm install && mkdir -p binaries && curl -L -o binaries/FBX2glTF-linux-x64 https://github.com/facebookincubator/FBX2glTF/releases/download/v0.9.7/FBX2glTF-linux-x64 && chmod +x binaries/FBX2glTF-linux-x64
     startCommand: npm start
     envVars:
       - key: NODE_ENV

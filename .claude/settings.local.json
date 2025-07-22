@@ -4,7 +4,10 @@
       "Bash(mkdir:*)",
       "Bash(chmod:*)",
       "Bash(./setup.sh:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(npm install)",
+      "Bash(npm start)",
+      "Bash(pkill:*)"
     ],
     "deny": []
   }
