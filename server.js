@@ -204,10 +204,33 @@ app.post('/convert', upload.single('fbxFile'), async (req, res) => {
   }
 });
 
+// Health check endpoint
+app.get('/health', (req, res) => {
+  const publicDir = path.join(__dirname, 'public');
+  const indexPath = path.join(publicDir, 'index.html');
+  const binariesDir = path.join(__dirname, 'binaries');
+  
+  res.json({
+    status: 'ok',
+    dirname: __dirname,
+    publicDir: publicDir,
+    publicExists: fs.existsSync(publicDir),
+    indexExists: fs.existsSync(indexPath),
+    binariesExists: fs.existsSync(binariesDir),
+    publicFiles: fs.existsSync(publicDir) ? fs.readdirSync(publicDir) : [],
+    binariesFiles: fs.existsSync(binariesDir) ? fs.readdirSync(binariesDir) : []
+  });
+});
+
 app.get('/', (req, res) => {
   const indexPath = path.join(__dirname, 'public', 'index.html');
   console.log(`Serving index.html from: ${indexPath}`);
   console.log(`File exists: ${fs.existsSync(indexPath)}`);
+  
+  if (!fs.existsSync(indexPath)) {
+    return res.status(404).send('index.html not found');
+  }
+  
   res.sendFile(indexPath);
 });
 

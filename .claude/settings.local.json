@@ -7,7 +7,9 @@
       "Bash(rm:*)",
       "Bash(npm install)",
       "Bash(npm start)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(curl:*)",
+      "Bash(timeout 5s npm start)"
     ],
     "deny": []
   }
