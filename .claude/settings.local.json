@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(mkdir:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(./setup.sh:*)",
+      "Bash(rm:*)"
     ],
     "deny": []
   }

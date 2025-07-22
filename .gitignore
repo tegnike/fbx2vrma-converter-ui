@@ -14,3 +14,6 @@ temp/
 .env.production.local
 
 *.log
+
+# Ignore binaries - downloaded during build
+binaries/

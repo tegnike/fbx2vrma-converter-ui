@@ -27,24 +27,40 @@ const upload = multer({
 
 function getFBX2glTFBinary() {
   const platform = process.platform;
+  let binaryName;
+  
   switch (platform) {
     case 'darwin':
-      return './binaries/FBX2glTF-darwin-x64';
+      binaryName = 'FBX2glTF-darwin-x64';
+      break;
     case 'linux':
-      return './binaries/FBX2glTF-linux-x64';
+      binaryName = 'FBX2glTF-linux-x64';
+      break;
     case 'win32':
-      return './binaries/FBX2glTF-windows-x64.exe';
+      binaryName = 'FBX2glTF-windows-x64.exe';
+      break;
     default:
       throw new Error(`Unsupported platform: ${platform}`);
   }
+  
+  return path.join(__dirname, 'binaries', binaryName);
 }
 
 function convertFBXtoGLTF(inputPath, outputPath) {
   return new Promise((resolve, reject) => {
     const fbx2gltf = getFBX2glTFBinary();
     
+    console.log(`Platform: ${process.platform}`);
+    console.log(`Looking for binary at: ${fbx2gltf}`);
+    console.log(`Binary exists: ${fs.existsSync(fbx2gltf)}`);
+    
     if (!fs.existsSync(fbx2gltf)) {
-      return reject(new Error(`FBX2glTF binary not found: ${fbx2gltf}`));
+      const binariesDir = path.join(__dirname, 'binaries');
+      console.log(`Binaries directory exists: ${fs.existsSync(binariesDir)}`);
+      if (fs.existsSync(binariesDir)) {
+        console.log('Available files in binaries:', fs.readdirSync(binariesDir));
+      }
+      return reject(new Error(`FBX2glTF binary not found: ${fbx2gltf}. Platform: ${process.platform}`));
     }
 
     const process = spawn(fbx2gltf, [
