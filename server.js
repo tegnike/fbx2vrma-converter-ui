@@ -148,19 +148,29 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
       return reject(new Error(`Input FBX file not found: ${absoluteInputPath}`));
     }
 
-    // Try different approach: change working directory and use relative paths
+    // FBX2glTF expects input filename WITHOUT extension
     const inputDir = path.dirname(absoluteInputPath);
-    const inputFileName = path.basename(absoluteInputPath);
+    const inputFileNameWithExt = path.basename(absoluteInputPath);
+    const inputFileNameWithoutExt = path.basename(absoluteInputPath, '.fbx');
     const outputFileName = outputBaseName;
     
     console.log(`Working directory: ${inputDir}`);
-    console.log(`Input file: ${inputFileName}`);
+    console.log(`Input file with extension: ${inputFileNameWithExt}`);
+    console.log(`Input file without extension: ${inputFileNameWithoutExt}`);
     console.log(`Output file: ${outputFileName}`);
     
-    // FBX2glTF outputs to the same directory as input by default
-    // We need to specify the output directory separately
+    // Verify files in working directory
+    try {
+      const filesInWorkingDir = fs.readdirSync(inputDir);
+      console.log(`Files in working directory: ${filesInWorkingDir.join(', ')}`);
+      console.log(`Target file ${inputFileNameWithExt} exists in working dir: ${filesInWorkingDir.includes(inputFileNameWithExt)}`);
+    } catch (error) {
+      console.log(`Error reading working directory: ${error.message}`);
+    }
+    
+    // FBX2glTF expects input without .fbx extension
     const childProcess = spawn(fbx2gltf, [
-      '--input', inputFileName,
+      '--input', inputFileNameWithoutExt,
       '--output', absoluteOutputDir,
       '--dst-name', outputFileName,
       '--binary'
