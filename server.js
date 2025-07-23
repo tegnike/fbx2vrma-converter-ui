@@ -63,18 +63,18 @@ function convertFBXtoGLTF(inputPath, outputPath) {
       return reject(new Error(`FBX2glTF binary not found: ${fbx2gltf}. Platform: ${process.platform}`));
     }
 
-    const process = spawn(fbx2gltf, [
+    const childProcess = spawn(fbx2gltf, [
       '--input', inputPath,
       '--output', outputPath,
       '--binary'
     ]);
 
     let stderr = '';
-    process.stderr.on('data', (data) => {
+    childProcess.stderr.on('data', (data) => {
       stderr += data.toString();
     });
 
-    process.on('close', (code) => {
+    childProcess.on('close', (code) => {
       if (code === 0) {
         resolve();
       } else {
@@ -82,7 +82,7 @@ function convertFBXtoGLTF(inputPath, outputPath) {
       }
     });
 
-    process.on('error', (error) => {
+    childProcess.on('error', (error) => {
       reject(error);
     });
   });
