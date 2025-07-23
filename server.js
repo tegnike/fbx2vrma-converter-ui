@@ -148,35 +148,16 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
       return reject(new Error(`Input FBX file not found: ${absoluteInputPath}`));
     }
 
-    // FBX2glTF expects input filename WITHOUT extension
-    const inputDir = path.dirname(absoluteInputPath);
-    const inputFileNameWithExt = path.basename(absoluteInputPath);
-    const inputFileNameWithoutExt = path.basename(absoluteInputPath, '.fbx');
-    const outputFileName = outputBaseName;
+    // Simple approach like the original article
+    console.log(`Converting: ${absoluteInputPath} -> ${absoluteOutputDir}`);
     
-    console.log(`Working directory: ${inputDir}`);
-    console.log(`Input file with extension: ${inputFileNameWithExt}`);
-    console.log(`Input file without extension: ${inputFileNameWithoutExt}`);
-    console.log(`Output file: ${outputFileName}`);
+    const tempGltfOutput = path.join(absoluteOutputDir, `${outputBaseName}.gltf`);
     
-    // Verify files in working directory
-    try {
-      const filesInWorkingDir = fs.readdirSync(inputDir);
-      console.log(`Files in working directory: ${filesInWorkingDir.join(', ')}`);
-      console.log(`Target file ${inputFileNameWithExt} exists in working dir: ${filesInWorkingDir.includes(inputFileNameWithExt)}`);
-    } catch (error) {
-      console.log(`Error reading working directory: ${error.message}`);
-    }
-    
-    // FBX2glTF expects input without .fbx extension
     const childProcess = spawn(fbx2gltf, [
-      '--input', inputFileNameWithoutExt,
-      '--output', absoluteOutputDir,
-      '--dst-name', outputFileName,
+      '--input', absoluteInputPath,
+      '--output', tempGltfOutput,
       '--binary'
-    ], {
-      cwd: inputDir
-    });
+    ]);
 
     let stderr = '';
     let stdout = '';
@@ -193,38 +174,16 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
 
     childProcess.on('close', (code) => {
       if (code === 0) {
-        console.log('FBX2glTF completed successfully. Searching for output files...');
-        
-        // Check multiple possible locations
-        const possibleOutputs = [
-          path.join(absoluteOutputDir, `${outputBaseName}.gltf`),
-          path.join(inputDir, `${outputBaseName}.gltf`),
-          path.join(absoluteOutputDir, `${path.basename(inputFileName, '.fbx')}.gltf`),
-          path.join(inputDir, `${path.basename(inputFileName, '.fbx')}.gltf`)
-        ];
-        
-        console.log('Checking possible output locations:');
-        possibleOutputs.forEach(outputPath => {
-          console.log(`  ${outputPath}: ${fs.existsSync(outputPath) ? 'EXISTS' : 'NOT FOUND'}`);
-        });
-        
-        // List all directories for debugging
-        console.log('Files in input directory:', fs.existsSync(inputDir) ? fs.readdirSync(inputDir) : 'DIR NOT FOUND');
-        console.log('Files in output directory:', fs.existsSync(absoluteOutputDir) ? fs.readdirSync(absoluteOutputDir) : 'DIR NOT FOUND');
-        
-        const foundOutput = possibleOutputs.find(outputPath => fs.existsSync(outputPath));
-        
-        if (foundOutput) {
-          console.log(`FBX2glTF output found at: ${foundOutput}`);
-          // Move file to expected location if necessary
-          const expectedOutput = path.join(absoluteOutputDir, `${outputBaseName}.gltf`);
-          if (foundOutput !== expectedOutput) {
-            console.log(`Moving output from ${foundOutput} to ${expectedOutput}`);
-            fs.moveSync(foundOutput, expectedOutput);
-          }
+        console.log(`FBX2glTF completed. Checking output: ${tempGltfOutput}`);
+        if (fs.existsSync(tempGltfOutput)) {
+          console.log('FBX2glTF conversion successful');
           resolve();
         } else {
-          reject(new Error(`FBX2glTF completed but no output file found in any expected location`));
+          // List files in output directory for debugging
+          if (fs.existsSync(absoluteOutputDir)) {
+            console.log('Files in output directory:', fs.readdirSync(absoluteOutputDir));
+          }
+          reject(new Error(`FBX2glTF completed but output file not found: ${tempGltfOutput}`));
         }
       } else {
         reject(new Error(`FBX2glTF failed with code ${code}. stderr: ${stderr}. stdout: ${stdout}`));
