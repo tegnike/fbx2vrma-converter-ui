@@ -45,7 +45,13 @@ const upload = multer({
 });
 
 // Middleware
-app.use(express.static('public'));
+app.use(express.static('public', {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.vrm')) {
+            res.setHeader('Content-Type', 'application/octet-stream');
+        }
+    }
+}));
 app.use(express.json());
 
 // Routes

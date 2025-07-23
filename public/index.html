@@ -4,6 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FBX to VRMA Converter</title>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://unpkg.com/three@0.164.1/build/three.module.js",
+            "three/addons/": "https://unpkg.com/three@0.164.1/examples/jsm/",
+            "@pixiv/three-vrm": "https://unpkg.com/@pixiv/three-vrm@2.1.0/lib/three-vrm.module.js"
+        }
+    }
+    </script>
     <style>
         * {
             margin: 0;
@@ -25,8 +34,61 @@
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
             padding: 40px;
-            max-width: 600px;
+            max-width: 1200px;
             width: 90%;
+            display: flex;
+            gap: 40px;
+        }
+
+        .left-panel {
+            flex: 1;
+            min-width: 500px;
+        }
+
+        .right-panel {
+            flex: 1;
+            min-width: 500px;
+        }
+
+        .vrm-viewer {
+            width: 100%;
+            height: 500px;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .viewer-controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .control-btn {
+            padding: 8px 16px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
+
+        .control-btn:hover {
+            background: #5a68c7;
+        }
+
+        @media (max-width: 1024px) {
+            .container {
+                flex-direction: column;
+                max-width: 600px;
+            }
+            
+            .left-panel, .right-panel {
+                min-width: auto;
+            }
         }
 
         .header {
@@ -221,17 +283,18 @@
 </head>
 <body>
     <div class="container">
-        <div class="header">
-            <h1>🎭 FBX to VRMA</h1>
-            <p>MixamoのFBXアニメーションをVRMA形式に変換</p>
-        </div>
+        <div class="left-panel">
+            <div class="header">
+                <h1>🎭 FBX to VRMA</h1>
+                <p>MixamoのFBXアニメーションをVRMA形式に変換</p>
+            </div>
 
-        <div class="warning">
-            <strong>⚠️ 注意事項</strong>
-            作成されるVRMAファイルはVRoid Studioでは再生できません。Three.js VRMでの使用を前提としています。
-        </div>
+            <div class="warning">
+                <strong>⚠️ 注意事項</strong>
+                作成されるVRMAファイルはVRoid Studioでは再生できません。Three.js VRMでの使用を前提としています。
+            </div>
 
-        <form id="converterForm" enctype="multipart/form-data">
+            <form id="converterForm" enctype="multipart/form-data">
             <div class="upload-area" id="uploadArea">
                 <div class="upload-icon">📁</div>
                 <div class="upload-text">FBXファイルをドラッグ&ドロップ</div>
@@ -274,9 +337,27 @@
                 📥 VRMAファイルをダウンロード
             </a>
         </div>
+        </div>
+
+        <div class="right-panel">
+            <div class="header">
+                <h2>VRMプレビュー</h2>
+                <p>にけちゃんのVRMモデルのデモ（ドラッグで回転）</p>
+            </div>
+            
+            <canvas id="vrmCanvas" class="vrm-viewer"></canvas>
+            
+            <div class="viewer-controls">
+                <button class="control-btn" onclick="resetCamera()">リセット</button>
+            </div>
+        </div>
     </div>
 
-    <script>
+    <script type="module">
+        import * as THREE from 'three';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+        import { VRMLoaderPlugin } from '@pixiv/three-vrm';
+
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fbxFile');
         const fileInfo = document.getElementById('fileInfo');
@@ -415,6 +496,246 @@
                 downloadBtn.style.display = 'none';
             }
         }
+
+        // VRM Viewer Setup - Basic viewer without VRMA functionality
+        let scene, camera, renderer, vrm, mixer, clock;
+        let isMouseDown = false;
+        let mouseX = 0, mouseY = 0;
+        let modelRotationY = Math.PI; // 初期値を180度（π）に設定
+        let modelRotationX = 0; // X軸回転（上下）を追加
+        let cameraDistance = 1.5; // カメラの距離を少し近く
+        const minDistance = 0.5;
+        const maxDistance = 10;
+        let modelGroup; // VRMモデルを包含するグループ
+
+        async function initVRMViewer() {
+            const canvas = document.getElementById('vrmCanvas');
+            
+            // Scene setup
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0xf0f0f0);
+            
+            // Camera setup
+            camera = new THREE.PerspectiveCamera(75, canvas.clientWidth / canvas.clientHeight, 0.1, 1000);
+            updateCameraPosition();
+            camera.lookAt(0, 1, 0); // カメラを適切な高さに向ける
+            
+            // Renderer setup
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true });
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+            
+            // Lighting - brighter setup
+            const ambientLight = new THREE.AmbientLight(0xffffff, 1.0);
+            scene.add(ambientLight);
+            
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            directionalLight.position.set(1, 1, 1);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+            
+            // Add fill light from the opposite side
+            const fillLight = new THREE.DirectionalLight(0xffffff, 0.6);
+            fillLight.position.set(-1, 0.5, -1);
+            scene.add(fillLight);
+            
+            // Clock for animations
+            clock = new THREE.Clock();
+            
+            // Load VRM model (basic loading without VRMA support)
+            try {
+                const loader = new GLTFLoader();
+                loader.register((parser) => {
+                    return new VRMLoaderPlugin(parser);
+                });
+                
+                console.log('Loading VRM model...');
+                const gltf = await loader.loadAsync('/nikechan_v2.vrm');
+                console.log('GLTF loaded:', gltf);
+                vrm = gltf.userData.vrm;
+                
+                if (vrm) {
+                    // Create a group to hold the VRM model for proper rotation
+                    modelGroup = new THREE.Group();
+                    modelGroup.add(vrm.scene);
+                    scene.add(modelGroup);
+                    
+                    // Position the model at center
+                    vrm.scene.position.set(0, 0, 0);
+                    
+                    // Set the pivot point of the group to abdomen height
+                    modelGroup.position.set(0, 0, 0);
+                } else {
+                    throw new Error('VRM data not found in loaded file');
+                }
+                
+                // Basic animation mixer for built-in animations only
+                if (gltf.animations && gltf.animations.length > 0) {
+                    mixer = new THREE.AnimationMixer(vrm.scene);
+                    gltf.animations.forEach(clip => {
+                        const action = mixer.clipAction(clip);
+                        action.play();
+                    });
+                }
+                
+                console.log('VRM model loaded successfully');
+            } catch (error) {
+                console.error('Failed to load VRM model:', error);
+                // Show error in viewer
+                const geometry = new THREE.BoxGeometry(1, 1, 1);
+                const material = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                const cube = new THREE.Mesh(geometry, material);
+                scene.add(cube);
+            }
+            
+            // Mouse controls for rotation
+            canvas.addEventListener('mousedown', onMouseDown);
+            canvas.addEventListener('mousemove', onMouseMove);
+            canvas.addEventListener('mouseup', onMouseUp);
+            canvas.addEventListener('mouseleave', onMouseUp);
+            
+            // Touch controls for mobile
+            canvas.addEventListener('touchstart', onTouchStart);
+            canvas.addEventListener('touchmove', onTouchMove);
+            canvas.addEventListener('touchend', onTouchEnd);
+            
+            // Wheel controls for zoom
+            canvas.addEventListener('wheel', onWheel);
+            
+            // Start render loop
+            animate();
+        }
+        
+        function animate() {
+            requestAnimationFrame(animate);
+            
+            const deltaTime = clock.getDelta();
+            
+            // Update VRM
+            if (vrm) {
+                vrm.update(deltaTime);
+            }
+            
+            // Update animations
+            if (mixer) {
+                mixer.update(deltaTime);
+            }
+            
+            // Apply model rotation around its center (abdomen area)
+            if (modelGroup) {
+                // Set the pivot point for rotation (abdomen height)
+                const pivotY = 0.8;
+                
+                // Position VRM model to rotate around abdomen
+                vrm.scene.position.set(0, -pivotY, 0);
+                
+                // Apply rotations to the group
+                modelGroup.rotation.x = modelRotationX;
+                modelGroup.rotation.y = modelRotationY;
+                
+                // Position the group to center the model properly
+                modelGroup.position.set(0, pivotY, 0);
+            }
+            
+            renderer.render(scene, camera);
+        }
+        
+        // Mouse control functions
+        function onMouseDown(event) {
+            isMouseDown = true;
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+        }
+        
+        function onMouseMove(event) {
+            if (!isMouseDown) return;
+            
+            const deltaX = event.clientX - mouseX;
+            const deltaY = event.clientY - mouseY;
+            
+            modelRotationY += deltaX * 0.01;
+            modelRotationX += deltaY * 0.01;
+            
+            // Limit X rotation to prevent over-rotation
+            modelRotationX = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, modelRotationX));
+            
+            mouseX = event.clientX;
+            mouseY = event.clientY;
+        }
+        
+        function onMouseUp(event) {
+            isMouseDown = false;
+        }
+        
+        // Camera position update function
+        function updateCameraPosition() {
+            camera.position.set(0, 1.4, cameraDistance);
+        }
+        
+        // Wheel control function
+        function onWheel(event) {
+            event.preventDefault();
+            
+            const delta = event.deltaY > 0 ? 0.2 : -0.2;
+            cameraDistance = Math.max(minDistance, Math.min(maxDistance, cameraDistance + delta));
+            
+            updateCameraPosition();
+        }
+        
+        // Touch control functions
+        function onTouchStart(event) {
+            event.preventDefault();
+            if (event.touches.length === 1) {
+                isMouseDown = true;
+                mouseX = event.touches[0].clientX;
+                mouseY = event.touches[0].clientY;
+            }
+        }
+        
+        function onTouchMove(event) {
+            event.preventDefault();
+            if (!isMouseDown || event.touches.length !== 1) return;
+            
+            const deltaX = event.touches[0].clientX - mouseX;
+            const deltaY = event.touches[0].clientY - mouseY;
+            
+            modelRotationY += deltaX * 0.01;
+            modelRotationX += deltaY * 0.01;
+            
+            // Limit X rotation to prevent over-rotation
+            modelRotationX = Math.max(-Math.PI / 3, Math.min(Math.PI / 3, modelRotationX));
+            
+            mouseX = event.touches[0].clientX;
+            mouseY = event.touches[0].clientY;
+        }
+        
+        function onTouchEnd(event) {
+            event.preventDefault();
+            isMouseDown = false;
+        }
+        
+        // Control functions - make them global
+        window.resetCamera = function() {
+            cameraDistance = 1.5;
+            updateCameraPosition();
+            camera.lookAt(0, 1, 0);
+            modelRotationY = Math.PI; // 初期状態の180度回転に戻す
+            modelRotationX = 0; // X軸回転もリセット
+        }
+        
+        
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            const canvas = document.getElementById('vrmCanvas');
+            camera.aspect = canvas.clientWidth / canvas.clientHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(canvas.clientWidth, canvas.clientHeight);
+        });
+        
+        // Initialize VRM viewer when page loads
+        window.addEventListener('load', initVRMViewer);
     </script>
 </body>
 </html>
