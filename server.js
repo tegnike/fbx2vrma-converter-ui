@@ -153,11 +153,15 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
     
     const tempGltfOutput = path.join(absoluteOutputDir, `${outputBaseName}.gltf`);
     
-    const childProcess = spawn(fbx2gltf, [
+    const args = [
       '--input', absoluteInputPath,
       '--output', tempGltfOutput,
       '--binary'
-    ]);
+    ];
+    
+    console.log(`Executing: ${fbx2gltf} ${args.join(' ')}`);
+    
+    const childProcess = spawn(fbx2gltf, args);
 
     let stderr = '';
     let stdout = '';
@@ -179,10 +183,32 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
           console.log('FBX2glTF conversion successful');
           resolve();
         } else {
-          // List files in output directory for debugging
-          if (fs.existsSync(absoluteOutputDir)) {
-            console.log('Files in output directory:', fs.readdirSync(absoluteOutputDir));
-          }
+          // Comprehensive directory search
+          console.log('Output file not found. Searching all possible locations...');
+          
+          // Check temp directory and its subdirectories
+          const searchDirs = [
+            absoluteOutputDir,
+            path.dirname(absoluteInputPath),
+            __dirname,
+            path.join(__dirname, 'temp')
+          ];
+          
+          searchDirs.forEach(dir => {
+            if (fs.existsSync(dir)) {
+              const files = fs.readdirSync(dir);
+              console.log(`Files in ${dir}:`, files);
+              
+              // Look for any .gltf files
+              const gltfFiles = files.filter(f => f.endsWith('.gltf'));
+              if (gltfFiles.length > 0) {
+                console.log(`Found GLTF files in ${dir}:`, gltfFiles);
+              }
+            } else {
+              console.log(`Directory does not exist: ${dir}`);
+            }
+          });
+          
           reject(new Error(`FBX2glTF completed but output file not found: ${tempGltfOutput}`));
         }
       } else {
