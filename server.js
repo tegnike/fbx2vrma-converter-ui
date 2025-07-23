@@ -122,7 +122,12 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
     console.log(`Platform: ${process.platform}`);
     console.log(`Looking for binary at: ${fbx2gltf}`);
     console.log(`Binary exists: ${fs.existsSync(fbx2gltf)}`);
-    console.log(`Converting: ${inputPath} -> ${outputDir}/${outputBaseName}`);
+    // Convert to absolute paths
+    const absoluteInputPath = path.resolve(inputPath);
+    const absoluteOutputDir = path.resolve(outputDir);
+    
+    console.log(`Converting: ${absoluteInputPath} -> ${absoluteOutputDir}/${outputBaseName}`);
+    console.log(`Input file exists: ${fs.existsSync(absoluteInputPath)}`);
     
     if (!fs.existsSync(fbx2gltf)) {
       const binariesDir = path.join(__dirname, 'binaries');
@@ -133,28 +138,46 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
       return reject(new Error(`FBX2glTF binary not found: ${fbx2gltf}. Platform: ${process.platform}`));
     }
 
+    if (!fs.existsSync(absoluteInputPath)) {
+      return reject(new Error(`Input FBX file not found: ${absoluteInputPath}`));
+    }
+
     const childProcess = spawn(fbx2gltf, [
-      '--input', inputPath,
-      '--output', outputDir,
+      '--input', absoluteInputPath,
+      '--output', absoluteOutputDir,
       '--dst-name', outputBaseName
     ]);
 
     let stderr = '';
+    let stdout = '';
+    
     childProcess.stderr.on('data', (data) => {
       stderr += data.toString();
+      console.log('FBX2glTF stderr:', data.toString());
+    });
+    
+    childProcess.stdout.on('data', (data) => {
+      stdout += data.toString();
+      console.log('FBX2glTF stdout:', data.toString());
     });
 
     childProcess.on('close', (code) => {
       if (code === 0) {
-        const expectedOutput = path.join(outputDir, `${outputBaseName}.gltf`);
+        const expectedOutput = path.join(absoluteOutputDir, `${outputBaseName}.gltf`);
+        console.log(`Checking for output file: ${expectedOutput}`);
+        
         if (fs.existsSync(expectedOutput)) {
           console.log(`FBX2glTF output created: ${expectedOutput}`);
           resolve();
         } else {
+          // List files in output directory for debugging
+          if (fs.existsSync(absoluteOutputDir)) {
+            console.log('Files in output directory:', fs.readdirSync(absoluteOutputDir));
+          }
           reject(new Error(`FBX2glTF completed but output file not found: ${expectedOutput}`));
         }
       } else {
-        reject(new Error(`FBX2glTF failed with code ${code}: ${stderr}`));
+        reject(new Error(`FBX2glTF failed with code ${code}. stderr: ${stderr}. stdout: ${stdout}`));
       }
     });
 
