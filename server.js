@@ -129,6 +129,12 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
     console.log(`Converting: ${absoluteInputPath} -> ${absoluteOutputDir}/${outputBaseName}`);
     console.log(`Input file exists: ${fs.existsSync(absoluteInputPath)}`);
     
+    if (fs.existsSync(absoluteInputPath)) {
+      const stats = fs.statSync(absoluteInputPath);
+      console.log(`Input file size: ${stats.size} bytes`);
+      console.log(`Input file is readable: ${fs.constants.R_OK}`);
+    }
+    
     if (!fs.existsSync(fbx2gltf)) {
       const binariesDir = path.join(__dirname, 'binaries');
       console.log(`Binaries directory exists: ${fs.existsSync(binariesDir)}`);
@@ -142,11 +148,22 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
       return reject(new Error(`Input FBX file not found: ${absoluteInputPath}`));
     }
 
+    // Try different approach: change working directory and use relative paths
+    const inputDir = path.dirname(absoluteInputPath);
+    const inputFileName = path.basename(absoluteInputPath);
+    const outputFileName = outputBaseName;
+    
+    console.log(`Working directory: ${inputDir}`);
+    console.log(`Input file: ${inputFileName}`);
+    console.log(`Output file: ${outputFileName}`);
+    
     const childProcess = spawn(fbx2gltf, [
-      '--input', absoluteInputPath,
-      '--output', absoluteOutputDir,
-      '--dst-name', outputBaseName
-    ]);
+      '--input', inputFileName,
+      '--output', path.join(absoluteOutputDir, outputFileName),
+      '--binary'
+    ], {
+      cwd: inputDir
+    });
 
     let stderr = '';
     let stdout = '';
@@ -303,6 +320,39 @@ app.post('/convert', upload.single('fbxFile'), async (req, res) => {
       error: 'Conversion failed', 
       message: error.message 
     });
+  }
+});
+
+// Debug endpoint to test FBX2glTF
+app.get('/debug-fbx2gltf', async (req, res) => {
+  try {
+    const fbx2gltf = getFBX2glTFBinary();
+    
+    if (!fs.existsSync(fbx2gltf)) {
+      return res.json({ error: 'Binary not found', path: fbx2gltf });
+    }
+    
+    const helpProcess = spawn(fbx2gltf, ['--help']);
+    let output = '';
+    
+    helpProcess.stdout.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    helpProcess.stderr.on('data', (data) => {
+      output += data.toString();
+    });
+    
+    helpProcess.on('close', (code) => {
+      res.json({
+        binary: fbx2gltf,
+        exitCode: code,
+        helpOutput: output
+      });
+    });
+    
+  } catch (error) {
+    res.json({ error: error.message });
   }
 });
 
