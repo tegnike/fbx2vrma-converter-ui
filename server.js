@@ -25,30 +25,55 @@ async function ensureBinaryExists() {
   const url = 'https://github.com/facebookincubator/FBX2glTF/releases/download/v0.9.7/FBX2glTF-linux-x64';
   
   return new Promise((resolve, reject) => {
-    const file = fs.createWriteStream(binaryPath);
+    let file = null;
     
-    https.get(url, (response) => {
-      if (response.statusCode !== 200) {
-        reject(new Error(`Download failed: ${response.statusCode}`));
-        return;
-      }
-      
-      response.pipe(file);
-      
-      file.on('finish', () => {
-        file.close();
-        fs.chmodSync(binaryPath, 0o755); // Make executable
-        console.log('Binary downloaded successfully:', binaryPath);
-        resolve();
-      });
-      
-      file.on('error', (error) => {
-        fs.unlinkSync(binaryPath);
+    const downloadFile = (downloadUrl) => {
+      https.get(downloadUrl, (response) => {
+        // Handle redirects
+        if (response.statusCode === 302 || response.statusCode === 301) {
+          console.log('Following redirect to:', response.headers.location);
+          return downloadFile(response.headers.location);
+        }
+        
+        if (response.statusCode !== 200) {
+          reject(new Error(`Download failed: ${response.statusCode}`));
+          return;
+        }
+        
+        // Create file stream only when we have a successful response
+        file = fs.createWriteStream(binaryPath);
+        response.pipe(file);
+        
+        file.on('finish', () => {
+          file.close();
+          try {
+            fs.chmodSync(binaryPath, 0o755); // Make executable
+            console.log('Binary downloaded successfully:', binaryPath);
+            resolve();
+          } catch (error) {
+            fs.unlinkSync(binaryPath);
+            reject(error);
+          }
+        });
+        
+        file.on('error', (error) => {
+          if (fs.existsSync(binaryPath)) {
+            fs.unlinkSync(binaryPath);
+          }
+          reject(error);
+        });
+      }).on('error', (error) => {
+        if (file) {
+          file.close();
+        }
+        if (fs.existsSync(binaryPath)) {
+          fs.unlinkSync(binaryPath);
+        }
         reject(error);
       });
-    }).on('error', (error) => {
-      reject(error);
-    });
+    };
+    
+    downloadFile(url);
   });
 }
 
