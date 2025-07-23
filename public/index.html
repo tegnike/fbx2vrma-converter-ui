@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FBX to VRMA Converter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            padding: 40px;
+            max-width: 600px;
+            width: 90%;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 1.1rem;
+        }
+
+        .upload-area {
+            border: 3px dashed #ddd;
+            border-radius: 15px;
+            padding: 40px;
+            text-align: center;
+            margin: 30px 0;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .upload-area:hover {
+            border-color: #667eea;
+            background-color: #f8f9ff;
+        }
+
+        .upload-area.dragover {
+            border-color: #667eea;
+            background-color: #f0f4ff;
+        }
+
+        .upload-icon {
+            font-size: 3rem;
+            color: #ddd;
+            margin-bottom: 20px;
+        }
+
+        .upload-text {
+            color: #666;
+            font-size: 1.1rem;
+            margin-bottom: 10px;
+        }
+
+        .file-input {
+            display: none;
+        }
+
+        .settings {
+            margin: 20px 0;
+        }
+
+        .setting-group {
+            margin-bottom: 20px;
+        }
+
+        .setting-group label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 500;
+        }
+
+        .setting-group input, .setting-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1rem;
+            transition: border-color 0.3s ease;
+        }
+
+        .setting-group input:focus, .setting-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .convert-btn {
+            width: 100%;
+            padding: 15px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.2rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s ease;
+            margin-top: 20px;
+        }
+
+        .convert-btn:hover {
+            transform: translateY(-2px);
+        }
+
+        .convert-btn:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .progress {
+            display: none;
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #eee;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea, #764ba2);
+            border-radius: 4px;
+            transition: width 0.3s ease;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .result {
+            display: none;
+            margin-top: 20px;
+            padding: 20px;
+            background: #f0f8ff;
+            border-radius: 10px;
+            text-align: center;
+        }
+
+        .result.success {
+            background: #f0fff0;
+            border: 2px solid #4caf50;
+        }
+
+        .result.error {
+            background: #fff0f0;
+            border: 2px solid #f44336;
+        }
+
+        .download-btn {
+            display: inline-block;
+            margin-top: 15px;
+            padding: 12px 24px;
+            background: #4caf50;
+            color: white;
+            text-decoration: none;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: background 0.3s ease;
+        }
+
+        .download-btn:hover {
+            background: #45a049;
+        }
+
+        .file-info {
+            display: none;
+            margin: 15px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .warning {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            color: #856404;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        .warning strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎭 FBX to VRMA</h1>
+            <p>MixamoのFBXアニメーションをVRMA形式に変換</p>
+        </div>
+
+        <div class="warning">
+            <strong>⚠️ 注意事項</strong>
+            作成されるVRMAファイルはVRoid Studioでは再生できません。Three.js VRMでの使用を前提としています。
+        </div>
+
+        <form id="converterForm" enctype="multipart/form-data">
+            <div class="upload-area" id="uploadArea">
+                <div class="upload-icon">📁</div>
+                <div class="upload-text">FBXファイルをドラッグ&ドロップ</div>
+                <div style="color: #999; font-size: 0.9rem;">または クリックしてファイルを選択</div>
+                <input type="file" id="fbxFile" name="fbxFile" class="file-input" accept=".fbx" required>
+            </div>
+
+            <div class="file-info" id="fileInfo">
+                <strong>選択されたファイル:</strong>
+                <span id="fileName"></span>
+                <br>
+                <strong>サイズ:</strong>
+                <span id="fileSize"></span>
+            </div>
+
+            <div class="settings">
+                <div class="setting-group">
+                    <label for="framerate">フレームレート (FPS)</label>
+                    <input type="number" id="framerate" name="framerate" value="30" min="1" max="120" step="1">
+                </div>
+            </div>
+
+            <button type="submit" class="convert-btn" id="convertBtn">
+                🔄 VRMA形式に変換
+            </button>
+        </form>
+
+        <div class="progress" id="progress">
+            <div style="text-align: center; margin-bottom: 10px; color: #666;">
+                変換中... <span id="progressText">準備中</span>
+            </div>
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+        </div>
+
+        <div class="result" id="result">
+            <div id="resultMessage"></div>
+            <a href="#" id="downloadBtn" class="download-btn" style="display: none;">
+                📥 VRMAファイルをダウンロード
+            </a>
+        </div>
+    </div>
+
+    <script>
+        const uploadArea = document.getElementById('uploadArea');
+        const fileInput = document.getElementById('fbxFile');
+        const fileInfo = document.getElementById('fileInfo');
+        const fileName = document.getElementById('fileName');
+        const fileSize = document.getElementById('fileSize');
+        const converterForm = document.getElementById('converterForm');
+        const convertBtn = document.getElementById('convertBtn');
+        const progress = document.getElementById('progress');
+        const progressFill = document.getElementById('progressFill');
+        const progressText = document.getElementById('progressText');
+        const result = document.getElementById('result');
+        const resultMessage = document.getElementById('resultMessage');
+        const downloadBtn = document.getElementById('downloadBtn');
+
+        // File upload handling
+        uploadArea.addEventListener('click', () => fileInput.click());
+        uploadArea.addEventListener('dragover', handleDragOver);
+        uploadArea.addEventListener('dragleave', handleDragLeave);
+        uploadArea.addEventListener('drop', handleDrop);
+        fileInput.addEventListener('change', handleFileSelect);
+
+        function handleDragOver(e) {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        }
+
+        function handleDragLeave(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+        }
+
+        function handleDrop(e) {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                fileInput.files = files;
+                handleFileSelect();
+            }
+        }
+
+        function handleFileSelect() {
+            const file = fileInput.files[0];
+            if (file) {
+                fileName.textContent = file.name;
+                fileSize.textContent = formatFileSize(file.size);
+                fileInfo.style.display = 'block';
+                uploadArea.style.borderColor = '#4caf50';
+                uploadArea.querySelector('.upload-text').textContent = '✅ ファイルが選択されました';
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // Form submission
+        converterForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            if (!fileInput.files[0]) {
+                alert('FBXファイルを選択してください');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('fbxFile', fileInput.files[0]);
+            formData.append('framerate', document.getElementById('framerate').value);
+
+            // Show progress
+            convertBtn.disabled = true;
+            convertBtn.textContent = '変換中...';
+            progress.style.display = 'block';
+            result.style.display = 'none';
+
+            // Simulate progress
+            simulateProgress();
+
+            try {
+                const response = await fetch('/convert', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    showResult('success', '✅ 変換が完了しました！', data.downloadUrl, data.filename);
+                } else {
+                    showResult('error', `❌ 変換に失敗しました: ${data.error}`);
+                }
+            } catch (error) {
+                showResult('error', `❌ エラーが発生しました: ${error.message}`);
+            } finally {
+                convertBtn.disabled = false;
+                convertBtn.textContent = '🔄 VRMA形式に変換';
+                progress.style.display = 'none';
+            }
+        });
+
+        function simulateProgress() {
+            const stages = [
+                { text: 'FBXファイルを解析中...', progress: 20 },
+                { text: 'GLTFに変換中...', progress: 50 },
+                { text: 'VRMAデータを生成中...', progress: 80 },
+                { text: '最終処理中...', progress: 95 }
+            ];
+
+            let currentStage = 0;
+            const interval = setInterval(() => {
+                if (currentStage < stages.length) {
+                    const stage = stages[currentStage];
+                    progressText.textContent = stage.text;
+                    progressFill.style.width = stage.progress + '%';
+                    currentStage++;
+                } else {
+                    clearInterval(interval);
+                }
+            }, 1500);
+        }
+
+        function showResult(type, message, downloadUrl = null, filename = null) {
+            result.className = `result ${type}`;
+            result.style.display = 'block';
+            resultMessage.textContent = message;
+
+            if (downloadUrl && filename) {
+                downloadBtn.href = downloadUrl;
+                downloadBtn.download = filename;
+                downloadBtn.style.display = 'inline-block';
+            } else {
+                downloadBtn.style.display = 'none';
+            }
+        }
+    </script>
+</body>
+</html>

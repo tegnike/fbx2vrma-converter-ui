@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: fbx2vrma-converter-ui
+    env: node
+    plan: free
+    buildCommand: |
+      npm install
+      curl -L -o FBX2glTF-linux-x64 https://github.com/facebookincubator/FBX2glTF/releases/download/v0.9.7/FBX2glTF-linux-x64
+      chmod +x FBX2glTF-linux-x64
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        fromService:
+          type: web
+          name: fbx2vrma-converter-ui
+          property: port
+    disk:
+      name: fbx2vrma-storage
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1

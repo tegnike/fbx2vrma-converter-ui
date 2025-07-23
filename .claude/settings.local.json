@@ -9,7 +9,13 @@
       "Bash(npm start)",
       "Bash(pkill:*)",
       "Bash(curl:*)",
-      "Bash(timeout 5s npm start)"
+      "Bash(timeout 5s npm start)",
+      "Bash(find:*)",
+      "WebFetch(domain:github.com)",
+      "mcp__deepwiki__ask_question",
+      "Bash(npm install:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "mcp__deepwiki__read_wiki_structure"
     ],
     "deny": []
   }

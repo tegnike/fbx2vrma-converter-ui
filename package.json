@@ -1,0 +1,30 @@
+{
+  "name": "fbx2vrma-converter-ui",
+  "version": "1.0.0",
+  "description": "Web UI for converting FBX animations to VRMA format",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "npm install && chmod +x FBX2glTF-linux-x64 || echo 'Binary not found yet'",
+    "postinstall": "curl -L -o FBX2glTF-linux-x64 https://github.com/facebookincubator/FBX2glTF/releases/download/v0.9.7/FBX2glTF-linux-x64 && chmod +x FBX2glTF-linux-x64"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "gltf-pipeline": "^4.3.0",
+    "multer": "^1.4.5-lts.1",
+    "uuid": "^9.0.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "keywords": [
+    "fbx",
+    "vrma",
+    "animation",
+    "vrm",
+    "converter"
+  ],
+  "author": "Your Name",
+  "license": "MIT"
+}
