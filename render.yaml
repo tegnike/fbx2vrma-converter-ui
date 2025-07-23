@@ -3,7 +3,7 @@ services:
     name: fbx2vrma-converter-ui
     env: node
     plan: free
-    buildCommand: npm run build
+    buildCommand: npm install
     startCommand: npm start
     envVars:
       - key: NODE_ENV

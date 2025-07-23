@@ -4,9 +4,53 @@ const path = require('path');
 const fs = require('fs-extra');
 const { spawn } = require('child_process');
 const cors = require('cors');
+const https = require('https');
 
 const app = express();
 const port = process.env.PORT || 3000;
+
+// Download binary on startup if not exists
+async function ensureBinaryExists() {
+  const binariesDir = path.join(__dirname, 'binaries');
+  const binaryPath = getFBX2glTFBinary();
+  
+  if (fs.existsSync(binaryPath)) {
+    console.log('Binary already exists:', binaryPath);
+    return;
+  }
+
+  console.log('Downloading FBX2glTF binary...');
+  await fs.ensureDir(binariesDir);
+  
+  const url = 'https://github.com/facebookincubator/FBX2glTF/releases/download/v0.9.7/FBX2glTF-linux-x64';
+  
+  return new Promise((resolve, reject) => {
+    const file = fs.createWriteStream(binaryPath);
+    
+    https.get(url, (response) => {
+      if (response.statusCode !== 200) {
+        reject(new Error(`Download failed: ${response.statusCode}`));
+        return;
+      }
+      
+      response.pipe(file);
+      
+      file.on('finish', () => {
+        file.close();
+        fs.chmodSync(binaryPath, 0o755); // Make executable
+        console.log('Binary downloaded successfully:', binaryPath);
+        resolve();
+      });
+      
+      file.on('error', (error) => {
+        fs.unlinkSync(binaryPath);
+        reject(error);
+      });
+    }).on('error', (error) => {
+      reject(error);
+    });
+  });
+}
 
 app.use(cors());
 app.use(express.json());
@@ -239,7 +283,18 @@ app.use((req, res) => {
   res.status(404).send('Page not found');
 });
 
-app.listen(port, () => {
-  console.log(`FBX2VRMA Converter UI running on port ${port}`);
-  console.log(`Static files served from: ${path.join(__dirname, 'public')}`);
-});
+// Initialize server with binary download
+async function startServer() {
+  try {
+    await ensureBinaryExists();
+    app.listen(port, () => {
+      console.log(`FBX2VRMA Converter UI running on port ${port}`);
+      console.log(`Static files served from: ${path.join(__dirname, 'public')}`);
+    });
+  } catch (error) {
+    console.error('Failed to initialize server:', error);
+    process.exit(1);
+  }
+}
+
+startServer();
