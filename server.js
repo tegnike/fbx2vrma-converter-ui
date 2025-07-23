@@ -49,6 +49,17 @@ app.use(express.static('public', {
     setHeaders: (res, path) => {
         if (path.endsWith('.vrm')) {
             res.setHeader('Content-Type', 'application/octet-stream');
+        } else if (path.endsWith('.vrma')) {
+            res.setHeader('Content-Type', 'application/octet-stream');
+        }
+    }
+}));
+
+// Serve output files for direct access (for VRMA animation loading)
+app.use('/output', express.static('output', {
+    setHeaders: (res, path) => {
+        if (path.endsWith('.vrma')) {
+            res.setHeader('Content-Type', 'application/octet-stream');
         }
     }
 }));
@@ -424,10 +435,11 @@ app.post('/convert', upload.single('fbxFile'), async (req, res) => {
         // Clean up input file
         fs.unlinkSync(inputPath);
 
-        // Return download link
+        // Return download link and direct access URL
         res.json({
             success: true,
             downloadUrl: `/download/${path.basename(vrmaPath)}`,
+            directUrl: `/output/${path.basename(vrmaPath)}`, // For direct VRMA loading
             filename: `${fileName}.vrma`
         });
 

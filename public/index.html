@@ -342,13 +342,14 @@
         <div class="right-panel">
             <div class="header">
                 <h2>VRMプレビュー</h2>
-                <p>にけちゃんのVRMモデルのデモ（ドラッグで回転）</p>
+                <p>ドラッグで回転、マウスホイールでズーム</p>
             </div>
             
             <canvas id="vrmCanvas" class="vrm-viewer"></canvas>
             
             <div class="viewer-controls">
-                <button class="control-btn" onclick="resetCamera()">リセット</button>
+                <button class="control-btn" onclick="resetCamera()">位置リセット</button>
+                <button class="control-btn" onclick="toggleAnimation()">アニメーション停止</button>
             </div>
         </div>
     </div>
@@ -357,6 +358,7 @@
         import * as THREE from 'three';
         import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
         import { VRMLoaderPlugin } from '@pixiv/three-vrm';
+        import { loadVRMAnimation } from './lib/VRMAnimation/loadVRMAnimation.js';
 
         const uploadArea = document.getElementById('uploadArea');
         const fileInput = document.getElementById('fbxFile');
@@ -449,7 +451,7 @@
                 const data = await response.json();
 
                 if (data.success) {
-                    showResult('success', '✅ 変換が完了しました！', data.downloadUrl, data.filename);
+                    showResult('success', '✅ 変換が完了しました！', data.downloadUrl, data.filename, data.directUrl);
                 } else {
                     showResult('error', `❌ 変換に失敗しました: ${data.error}`);
                 }
@@ -483,7 +485,7 @@
             }, 1500);
         }
 
-        function showResult(type, message, downloadUrl = null, filename = null) {
+        async function showResult(type, message, downloadUrl = null, filename = null, directUrl = null) {
             result.className = `result ${type}`;
             result.style.display = 'block';
             resultMessage.textContent = message;
@@ -492,12 +494,34 @@
                 downloadBtn.href = downloadUrl;
                 downloadBtn.download = filename;
                 downloadBtn.style.display = 'inline-block';
+                
+                // Auto-load VRMA animation if conversion was successful
+                if (type === 'success' && filename.endsWith('.vrma') && directUrl) {
+                    try {
+                        console.log('Auto-loading VRMA animation:', directUrl);
+                        const animationName = filename.replace('.vrma', '');
+                        const action = await loadAndPlayVRMAAnimation(directUrl, animationName);
+                        
+                        if (action) {
+                            // Play the animation with a slight delay to ensure smooth loading
+                            setTimeout(() => {
+                                playVRMAAnimation(animationName, true);
+                                resultMessage.textContent = message + ' アニメーションが自動再生されました！';
+                                // ボタンの初期更新を確実に実行
+                                setTimeout(updateAnimationButton, 100);
+                            }, 500);
+                        }
+                    } catch (error) {
+                        console.error('Failed to auto-load VRMA animation:', error);
+                        resultMessage.textContent = message + ' (アニメーション自動読み込みに失敗)';
+                    }
+                }
             } else {
                 downloadBtn.style.display = 'none';
             }
         }
 
-        // VRM Viewer Setup - Basic viewer without VRMA functionality
+        // VRM Viewer Setup with VRMA animation support
         let scene, camera, renderer, vrm, mixer, clock;
         let isMouseDown = false;
         let mouseX = 0, mouseY = 0;
@@ -507,6 +531,10 @@
         const minDistance = 0.5;
         const maxDistance = 10;
         let modelGroup; // VRMモデルを包含するグループ
+        let currentAnimationAction = null; // 現在再生中のアニメーション
+        let animationActions = new Map(); // アニメーションアクションの管理
+        let lastAnimationName = null; // 直近のアニメーション名
+        let isAnimationPlaying = false; // アニメーション再生状態
 
         async function initVRMViewer() {
             const canvas = document.getElementById('vrmCanvas');
@@ -571,12 +599,14 @@
                     throw new Error('VRM data not found in loaded file');
                 }
                 
-                // Basic animation mixer for built-in animations only
+                // Initialize animation mixer for VRMA animations
+                mixer = new THREE.AnimationMixer(vrm.scene);
+                
+                // Handle built-in animations if any
                 if (gltf.animations && gltf.animations.length > 0) {
-                    mixer = new THREE.AnimationMixer(vrm.scene);
                     gltf.animations.forEach(clip => {
                         const action = mixer.clipAction(clip);
-                        action.play();
+                        animationActions.set(clip.name || 'builtin', action);
                     });
                 }
                 
@@ -724,6 +754,104 @@
             modelRotationY = Math.PI; // 初期状態の180度回転に戻す
             modelRotationX = 0; // X軸回転もリセット
         }
+        
+        // VRMA Animation functions
+        async function loadAndPlayVRMAAnimation(url, animationName = 'vrma_animation') {
+            if (!vrm || !mixer) {
+                console.warn('VRM model not loaded. Cannot load VRMA animation.');
+                return false;
+            }
+            
+            try {
+                console.log('Loading VRMA animation from:', url);
+                const vrmAnimation = await loadVRMAnimation(url);
+                
+                if (vrmAnimation) {
+                    // Create animation clip from VRMA
+                    const clip = vrmAnimation.createAnimationClip(vrm);
+                    const action = mixer.clipAction(clip);
+                    
+                    // Store the action
+                    animationActions.set(animationName, action);
+                    
+                    console.log(`VRMA animation '${animationName}' loaded successfully`);
+                    return action;
+                } else {
+                    console.error('Failed to load VRMA animation');
+                    return false;
+                }
+            } catch (error) {
+                console.error('Error loading VRMA animation:', error);
+                return false;
+            }
+        }
+        
+        function playVRMAAnimation(animationName, loop = true) {
+            const action = animationActions.get(animationName);
+            if (!action) {
+                console.warn(`Animation '${animationName}' not found`);
+                return;
+            }
+            
+            // Stop current animation
+            if (currentAnimationAction) {
+                currentAnimationAction.stop();
+            }
+            
+            // Play new animation
+            action.reset();
+            action.loop = loop ? THREE.LoopRepeat : THREE.LoopOnce;
+            action.play();
+            currentAnimationAction = action;
+            lastAnimationName = animationName; // 直近のアニメーション名を保存
+            isAnimationPlaying = true;
+            updateAnimationButton(); // ボタンテキストを更新
+            
+            console.log(`Playing animation: ${animationName} (loop: ${loop})`);
+        }
+        
+        function toggleAnimation() {
+            if (isAnimationPlaying) {
+                // アニメーション停止
+                if (currentAnimationAction) {
+                    currentAnimationAction.stop();
+                    currentAnimationAction = null;
+                    isAnimationPlaying = false;
+                    updateAnimationButton();
+                    console.log('Animation stopped');
+                }
+            } else {
+                // 直近のアニメーションを再生
+                if (lastAnimationName && animationActions.has(lastAnimationName)) {
+                    playVRMAAnimation(lastAnimationName, true);
+                    console.log('Animation resumed');
+                } else {
+                    console.warn('No recent animation to play');
+                }
+            }
+        }
+        
+        function updateAnimationButton() {
+            const button = document.querySelector('button[onclick*="stopCurrentAnimation"], button[onclick*="toggleAnimation"]');
+            if (button) {
+                if (isAnimationPlaying) {
+                    button.textContent = 'アニメーション停止';
+                    button.onclick = toggleAnimation;
+                } else if (lastAnimationName) {
+                    button.textContent = 'アニメーション再生';
+                    button.onclick = toggleAnimation;
+                } else {
+                    button.textContent = 'アニメーション停止';
+                    button.onclick = toggleAnimation;
+                }
+            }
+        }
+        
+        // Make animation functions global
+        window.loadAndPlayVRMAAnimation = loadAndPlayVRMAAnimation;
+        window.playVRMAAnimation = playVRMAAnimation;
+        window.toggleAnimation = toggleAnimation;
+        window.updateAnimationButton = updateAnimationButton;
         
         
         // Handle window resize
