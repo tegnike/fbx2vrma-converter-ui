@@ -34,6 +34,7 @@
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
             padding: 40px;
+            margin-top: 20px;
             max-width: 1200px;
             width: 90%;
             display: flex;
@@ -57,6 +58,29 @@
             border-radius: 10px;
             position: relative;
             overflow: hidden;
+            transition: border-color 0.3s ease;
+        }
+
+        .vrm-viewer.dragover {
+            border-color: #667eea;
+            background-color: rgba(102, 126, 234, 0.1);
+        }
+
+        .drop-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(102, 126, 234, 0.9);
+            color: white;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border-radius: 8px;
+            z-index: 10;
         }
 
         .viewer-controls {
@@ -345,11 +369,18 @@
                 <p>ドラッグで回転、マウスホイールでズーム</p>
             </div>
             
-            <canvas id="vrmCanvas" class="vrm-viewer"></canvas>
+            <div class="vrm-viewer">
+                <canvas id="vrmCanvas" style="width: 100%; height: 100%; display: block;"></canvas>
+                <div id="dropOverlay" class="drop-overlay">
+                    🎭 VRMAファイルをドロップして再生
+                </div>
+            </div>
             
             <div class="viewer-controls">
                 <button class="control-btn" onclick="resetCamera()">位置リセット</button>
                 <button class="control-btn" onclick="toggleAnimation()">アニメーション停止</button>
+                <input type="file" id="vrmaFileInput" accept=".vrma" style="display: none;" />
+                <button class="control-btn" onclick="document.getElementById('vrmaFileInput').click()">VRMAアップロード</button>
             </div>
         </div>
     </div>
@@ -373,6 +404,9 @@
         const result = document.getElementById('result');
         const resultMessage = document.getElementById('resultMessage');
         const downloadBtn = document.getElementById('downloadBtn');
+        const vrmaFileInput = document.getElementById('vrmaFileInput');
+        const vrmViewer = document.querySelector('.vrm-viewer');
+        const dropOverlay = document.getElementById('dropOverlay');
 
         // File upload handling
         uploadArea.addEventListener('click', () => fileInput.click());
@@ -380,6 +414,14 @@
         uploadArea.addEventListener('dragleave', handleDragLeave);
         uploadArea.addEventListener('drop', handleDrop);
         fileInput.addEventListener('change', handleFileSelect);
+
+        // VRMA file upload handling
+        vrmaFileInput.addEventListener('change', handleVRMAFileSelect);
+        
+        // VRM viewer drag and drop for VRMA files
+        vrmViewer.addEventListener('dragover', handleVRMADragOver);
+        vrmViewer.addEventListener('dragleave', handleVRMADragLeave);
+        vrmViewer.addEventListener('drop', handleVRMADrop);
 
         function handleDragOver(e) {
             e.preventDefault();
@@ -418,6 +460,93 @@
             const sizes = ['Bytes', 'KB', 'MB', 'GB'];
             const i = Math.floor(Math.log(bytes) / Math.log(k));
             return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+        }
+
+        // VRMA file drag and drop handlers
+        function handleVRMADragOver(e) {
+            e.preventDefault();
+            const files = e.dataTransfer.items;
+            let hasVRMA = false;
+            
+            // Check if dragged files include VRMA
+            for (let i = 0; i < files.length; i++) {
+                if (files[i].kind === 'file' && files[i].type === '' && files[i].getAsFile().name.toLowerCase().endsWith('.vrma')) {
+                    hasVRMA = true;
+                    break;
+                }
+            }
+            
+            if (hasVRMA || e.dataTransfer.types.includes('Files')) {
+                vrmViewer.classList.add('dragover');
+                dropOverlay.style.display = 'flex';
+            }
+        }
+
+        function handleVRMADragLeave(e) {
+            e.preventDefault();
+            // Only remove dragover if we're leaving the viewer area entirely
+            if (!vrmViewer.contains(e.relatedTarget)) {
+                vrmViewer.classList.remove('dragover');
+                dropOverlay.style.display = 'none';
+            }
+        }
+
+        function handleVRMADrop(e) {
+            e.preventDefault();
+            vrmViewer.classList.remove('dragover');
+            dropOverlay.style.display = 'none';
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                const file = files[0];
+                if (file.name.toLowerCase().endsWith('.vrma')) {
+                    loadVRMAFile(file);
+                } else {
+                    alert('VRMAファイルのみ対応しています。');
+                }
+            }
+        }
+
+        function handleVRMAFileSelect() {
+            const file = vrmaFileInput.files[0];
+            if (file) {
+                loadVRMAFile(file);
+            }
+        }
+
+        async function loadVRMAFile(file) {
+            if (!vrm || !mixer) {
+                alert('VRMモデルが読み込まれていません。');
+                return;
+            }
+
+            try {
+                console.log('Loading VRMA file:', file.name);
+                
+                // Create object URL for the file
+                const url = URL.createObjectURL(file);
+                const animationName = file.name.replace('.vrma', '');
+                
+                // Load and play the VRMA animation
+                const action = await loadAndPlayVRMAAnimation(url, animationName);
+                
+                if (action) {
+                    // Play the animation
+                    setTimeout(() => {
+                        playVRMAAnimation(animationName, true);
+                        updateAnimationButton();
+                    }, 100);
+                } else {
+                    throw new Error('VRMAファイルの読み込みに失敗しました');
+                }
+                
+                // Clean up object URL
+                URL.revokeObjectURL(url);
+                
+            } catch (error) {
+                console.error('Error loading VRMA file:', error);
+                alert(`VRMAファイルの読み込みに失敗しました: ${error.message}`);
+            }
         }
 
         // Form submission
