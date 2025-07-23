@@ -115,13 +115,14 @@ function getFBX2glTFBinary() {
   return path.join(__dirname, 'binaries', binaryName);
 }
 
-function convertFBXtoGLTF(inputPath, outputPath) {
+function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
   return new Promise((resolve, reject) => {
     const fbx2gltf = getFBX2glTFBinary();
     
     console.log(`Platform: ${process.platform}`);
     console.log(`Looking for binary at: ${fbx2gltf}`);
     console.log(`Binary exists: ${fs.existsSync(fbx2gltf)}`);
+    console.log(`Converting: ${inputPath} -> ${outputDir}/${outputBaseName}`);
     
     if (!fs.existsSync(fbx2gltf)) {
       const binariesDir = path.join(__dirname, 'binaries');
@@ -134,8 +135,8 @@ function convertFBXtoGLTF(inputPath, outputPath) {
 
     const childProcess = spawn(fbx2gltf, [
       '--input', inputPath,
-      '--output', outputPath,
-      '--binary'
+      '--output', outputDir,
+      '--dst-name', outputBaseName
     ]);
 
     let stderr = '';
@@ -145,7 +146,13 @@ function convertFBXtoGLTF(inputPath, outputPath) {
 
     childProcess.on('close', (code) => {
       if (code === 0) {
-        resolve();
+        const expectedOutput = path.join(outputDir, `${outputBaseName}.gltf`);
+        if (fs.existsSync(expectedOutput)) {
+          console.log(`FBX2glTF output created: ${expectedOutput}`);
+          resolve();
+        } else {
+          reject(new Error(`FBX2glTF completed but output file not found: ${expectedOutput}`));
+        }
       } else {
         reject(new Error(`FBX2glTF failed with code ${code}: ${stderr}`));
       }
@@ -224,7 +231,10 @@ app.post('/convert', upload.single('fbxFile'), async (req, res) => {
     await fs.ensureDir('temp');
 
     console.log('Converting FBX to glTF...');
-    await convertFBXtoGLTF(fbxPath, tempGltfPath);
+    await convertFBXtoGLTF(fbxPath, 'temp', baseFilename);
+    
+    // FBX2glTF creates .gltf file, so we need to update the path
+    tempGltfPath = path.join('temp', `${baseFilename}.gltf`);
 
     console.log('Generating VRMA...');
     await generateVRMA(tempGltfPath, tempVrmaPath, framerate);
