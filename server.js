@@ -377,31 +377,66 @@ app.post('/convert', upload.single('fbxFile'), async (req, res) => {
   }
 });
 
-// Debug endpoint to test FBX2glTF
+// Debug endpoint to test FBX2glTF and system
 app.get('/debug-fbx2gltf', async (req, res) => {
   try {
     const fbx2gltf = getFBX2glTFBinary();
     
+    // System information
+    const systemInfo = {
+      platform: process.platform,
+      arch: process.arch,
+      nodeVersion: process.version,
+      cwd: process.cwd(),
+      uid: process.getuid ? process.getuid() : 'N/A',
+      gid: process.getgid ? process.getgid() : 'N/A'
+    };
+    
+    // Binary information
+    const binaryInfo = {
+      path: fbx2gltf,
+      exists: fs.existsSync(fbx2gltf),
+      stats: fs.existsSync(fbx2gltf) ? fs.statSync(fbx2gltf) : null
+    };
+    
     if (!fs.existsSync(fbx2gltf)) {
-      return res.json({ error: 'Binary not found', path: fbx2gltf });
+      return res.json({ 
+        error: 'Binary not found', 
+        systemInfo,
+        binaryInfo
+      });
     }
     
+    // Test binary execution
     const helpProcess = spawn(fbx2gltf, ['--help']);
     let output = '';
+    let errorOutput = '';
     
     helpProcess.stdout.on('data', (data) => {
       output += data.toString();
     });
     
     helpProcess.stderr.on('data', (data) => {
-      output += data.toString();
+      errorOutput += data.toString();
     });
     
     helpProcess.on('close', (code) => {
       res.json({
-        binary: fbx2gltf,
+        systemInfo,
+        binaryInfo,
         exitCode: code,
-        helpOutput: output
+        stdout: output,
+        stderr: errorOutput,
+        canExecute: code !== 126 && code !== 127
+      });
+    });
+    
+    helpProcess.on('error', (error) => {
+      res.json({
+        systemInfo,
+        binaryInfo,
+        error: error.message,
+        canExecute: false
       });
     });
     
