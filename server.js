@@ -161,6 +161,21 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
     
     console.log(`Executing: ${fbx2gltf} ${args.join(' ')}`);
     
+    // Capture all files before execution
+    const getAllFiles = (dir) => {
+      if (!fs.existsSync(dir)) return [];
+      return fs.readdirSync(dir, { withFileTypes: true })
+        .filter(dirent => dirent.isFile())
+        .map(dirent => path.join(dir, dirent.name));
+    };
+    
+    const beforeFiles = [
+      ...getAllFiles(absoluteOutputDir),
+      ...getAllFiles(path.dirname(absoluteInputPath)),
+      ...getAllFiles(__dirname)
+    ];
+    console.log('Files before FBX2glTF execution:', beforeFiles.length);
+    
     const childProcess = spawn(fbx2gltf, args);
 
     let stderr = '';
@@ -179,9 +194,30 @@ function convertFBXtoGLTF(inputPath, outputDir, outputBaseName) {
     childProcess.on('close', (code) => {
       if (code === 0) {
         console.log(`FBX2glTF completed. Checking output: ${tempGltfOutput}`);
+        
+        // Find new files created
+        const afterFiles = [
+          ...getAllFiles(absoluteOutputDir),
+          ...getAllFiles(path.dirname(absoluteInputPath)),
+          ...getAllFiles(__dirname)
+        ];
+        
+        const newFiles = afterFiles.filter(file => !beforeFiles.includes(file));
+        console.log('New files created by FBX2glTF:', newFiles);
+        
         if (fs.existsSync(tempGltfOutput)) {
           console.log('FBX2glTF conversion successful');
           resolve();
+        } else if (newFiles.length > 0) {
+          // Look for any .gltf file in the new files
+          const gltfFile = newFiles.find(file => file.endsWith('.gltf'));
+          if (gltfFile) {
+            console.log(`Found GLTF file at unexpected location: ${gltfFile}`);
+            console.log(`Moving to expected location: ${tempGltfOutput}`);
+            fs.moveSync(gltfFile, tempGltfOutput);
+            resolve();
+            return;
+          }
         } else {
           // Comprehensive directory search
           console.log('Output file not found. Searching all possible locations...');
