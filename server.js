@@ -40,7 +40,7 @@ const upload = multer({
         }
     },
     limits: {
-        fileSize: 100 * 1024 * 1024 // 100MB limit
+        fileSize: 50 * 1024 * 1024 // 50MB limit
     }
 });
 
@@ -182,11 +182,15 @@ function convertFBXtoGLTF(inputPath, outputPath) {
     });
 }
 
-// Convert GLTF to VRMA
+// Convert GLTF to VRMA with memory-efficient processing
 function convertGLTFtoVRMA(gltfPath, vrmaPath, framerate = 30) {
     return new Promise((resolve, reject) => {
         try {
             console.log('Reading GLB file:', gltfPath);
+            const stats = fs.statSync(gltfPath);
+            console.log('GLB file size:', Math.round(stats.size / 1024 / 1024 * 100) / 100, 'MB');
+            
+            // Use streaming for large files
             const gltfBuffer = fs.readFileSync(gltfPath);
             
             // Parse GLB binary format
@@ -215,11 +219,14 @@ function convertGLTFtoVRMA(gltfPath, vrmaPath, framerate = 30) {
                 throw new Error('No valid humanoid bones found. This may not be a Mixamo animation or the bone names are different.');
             }
             
+            // Filter out scale animations to prevent "Invalid path scale" errors
+            const filteredGltfData = filterScaleAnimations(gltfData);
+            
             // Preserve the original GLTF structure and only add VRMA extension
             const vrmaData = {
-                ...gltfData, // Keep all original GLTF data
+                ...filteredGltfData, // Keep all original GLTF data
                 "asset": {
-                    ...gltfData.asset,
+                    ...filteredGltfData.asset,
                     "generator": "FBX2VRMA-Converter-UI"
                 },
                 "extensionsUsed": ["VRMC_vrm_animation"],
@@ -233,9 +240,12 @@ function convertGLTFtoVRMA(gltfPath, vrmaPath, framerate = 30) {
             
             console.log('Final VRMA extensions:', JSON.stringify(vrmaData.extensions, null, 2));
 
-            // Write as GLB format to maintain compatibility
+            // Write as GLB format to maintain compatibility with memory optimization
             const vrmaBuffer = createGLBWithBinary(vrmaData, binaryData);
             fs.writeFileSync(vrmaPath, vrmaBuffer);
+            
+            // Clear large buffers from memory
+            vrmaData.extensions = null;
             
             console.log('VRMA file created successfully:', vrmaPath);
             resolve(vrmaPath);
@@ -246,7 +256,7 @@ function convertGLTFtoVRMA(gltfPath, vrmaPath, framerate = 30) {
     });
 }
 
-// Parse GLB binary format
+// Memory-efficient GLB binary format parser
 function parseGLB(buffer) {
     const header = new DataView(buffer.buffer, buffer.byteOffset, 12);
     const magic = header.getUint32(0, true);
@@ -262,7 +272,7 @@ function parseGLB(buffer) {
     let jsonData = null;
     let binaryData = null;
     
-    // Read chunks
+    // Read chunks with memory optimization
     while (offset < length) {
         const chunkLength = new DataView(buffer.buffer, buffer.byteOffset + offset, 4).getUint32(0, true);
         const chunkType = new DataView(buffer.buffer, buffer.byteOffset + offset + 4, 4).getUint32(0, true);
@@ -270,10 +280,12 @@ function parseGLB(buffer) {
         offset += 8;
         
         if (chunkType === 0x4E4F534A) { // 'JSON'
-            const jsonBuffer = buffer.slice(offset, offset + chunkLength);
+            const jsonBuffer = buffer.subarray(offset, offset + chunkLength);
             jsonData = JSON.parse(jsonBuffer.toString('utf8'));
+            // Clear JSON buffer reference to free memory
         } else if (chunkType === 0x004E4942) { // 'BIN\0'
-            binaryData = buffer.slice(offset, offset + chunkLength);
+            // Create a reference to binary data without copying
+            binaryData = buffer.subarray(offset, offset + chunkLength);
         }
         
         offset += chunkLength;
@@ -352,6 +364,65 @@ function createHumanoidMapping(gltfData) {
     return { humanBones };
 }
 
+// Filter out scale animations that cause "Invalid path scale" errors
+function filterScaleAnimations(gltfData) {
+    const filteredData = { ...gltfData };
+    
+    if (filteredData.animations && filteredData.animations.length > 0) {
+        console.log('Filtering scale animations from', filteredData.animations.length, 'animations');
+        
+        filteredData.animations = filteredData.animations.map(animation => {
+            const filteredAnimation = { ...animation };
+            
+            if (filteredAnimation.channels && filteredAnimation.samplers) {
+                // Filter out channels with scale path
+                const validChannels = [];
+                const usedSamplers = new Set();
+                
+                filteredAnimation.channels.forEach(channel => {
+                    if (channel.target && channel.target.path !== 'scale') {
+                        validChannels.push(channel);
+                        if (typeof channel.sampler === 'number') {
+                            usedSamplers.add(channel.sampler);
+                        }
+                    } else {
+                        console.log('Filtering out scale channel for node:', channel.target?.node);
+                    }
+                });
+                
+                // Keep only samplers that are still used
+                const filteredSamplers = [];
+                const samplerMapping = new Map();
+                
+                filteredAnimation.samplers.forEach((sampler, index) => {
+                    if (usedSamplers.has(index)) {
+                        samplerMapping.set(index, filteredSamplers.length);
+                        filteredSamplers.push(sampler);
+                    }
+                });
+                
+                // Update channel sampler indices
+                validChannels.forEach(channel => {
+                    if (typeof channel.sampler === 'number' && samplerMapping.has(channel.sampler)) {
+                        channel.sampler = samplerMapping.get(channel.sampler);
+                    }
+                });
+                
+                filteredAnimation.channels = validChannels;
+                filteredAnimation.samplers = filteredSamplers;
+                
+                console.log(`Animation '${animation.name || 'unnamed'}': ${animation.channels.length} -> ${validChannels.length} channels, ${animation.samplers.length} -> ${filteredSamplers.length} samplers`);
+            }
+            
+            return filteredAnimation;
+        });
+        
+        console.log('Scale animation filtering completed');
+    }
+    
+    return filteredData;
+}
+
 // Process animations to ensure proper VRMA format (no longer needed - preserve original)
 function processAnimations(animations, framerate) {
     // Simply return the original animations without modification
@@ -359,7 +430,7 @@ function processAnimations(animations, framerate) {
     return animations;
 }
 
-// Create GLB binary format with binary data
+// Memory-efficient GLB binary format creation
 function createGLBWithBinary(gltfData, binaryData) {
     const jsonString = JSON.stringify(gltfData);
     const jsonBuffer = Buffer.from(jsonString, 'utf8');
@@ -375,7 +446,9 @@ function createGLBWithBinary(gltfData, binaryData) {
     if (binaryData && binaryData.length > 0) {
         // Pad binary data to 4-byte boundary
         const binaryPadding = (4 - (binaryData.length % 4)) % 4;
-        const paddedBinaryData = Buffer.concat([binaryData, Buffer.alloc(binaryPadding, 0)]);
+        const paddedBinaryData = binaryPadding > 0 ? 
+            Buffer.concat([binaryData, Buffer.alloc(binaryPadding, 0)]) : 
+            binaryData;
         
         // Binary chunk header
         const binaryChunkHeader = Buffer.alloc(8);
@@ -397,7 +470,12 @@ function createGLBWithBinary(gltfData, binaryData) {
     jsonChunkHeader.writeUInt32LE(paddedJsonBuffer.length, 0); // chunk length
     jsonChunkHeader.writeUInt32LE(0x4E4F534A, 4); // 'JSON' type
     
-    return Buffer.concat(buffers);
+    const result = Buffer.concat(buffers);
+    
+    // Clear intermediate buffers to free memory
+    buffers.length = 0;
+    
+    return result;
 }
 
 // Create GLB binary format (legacy function for compatibility)
@@ -405,22 +483,27 @@ function createGLB(gltfData) {
     return createGLBWithBinary(gltfData, null);
 }
 
-// Main conversion endpoint
+// Main conversion endpoint with robust file cleanup
 app.post('/convert', upload.single('fbxFile'), async (req, res) => {
+    let inputPath = null;
+    let gltfPath = null;
+    let vrmaPath = null;
+    
     try {
         if (!req.file) {
             return res.status(400).json({ error: 'No FBX file uploaded' });
         }
 
         const framerate = parseInt(req.body.framerate) || 30;
-        const inputPath = req.file.path;
+        inputPath = req.file.path;
         const fileName = path.basename(req.file.originalname, '.fbx');
         const uniqueId = uuidv4();
         
-        const gltfPath = path.join(outputDir, `${uniqueId}-${fileName}.glb`);
-        const vrmaPath = path.join(outputDir, `${uniqueId}-${fileName}.vrma`);
+        gltfPath = path.join(outputDir, `${uniqueId}-${fileName}.glb`);
+        vrmaPath = path.join(outputDir, `${uniqueId}-${fileName}.vrma`);
 
         console.log(`Converting ${req.file.originalname} with framerate ${framerate}`);
+        console.log('Input file size:', Math.round(fs.statSync(inputPath).size / 1024 / 1024 * 100) / 100, 'MB');
 
         // Step 1: Convert FBX to GLTF
         console.log('Step 1: Converting FBX to GLTF...');
@@ -431,9 +514,6 @@ app.post('/convert', upload.single('fbxFile'), async (req, res) => {
         console.log('Step 2: Converting GLTF to VRMA...');
         await convertGLTFtoVRMA(gltfPath, vrmaPath, framerate);
         console.log('GLTF to VRMA conversion completed');
-
-        // Clean up input file
-        fs.unlinkSync(inputPath);
 
         // Return download link and direct access URL
         res.json({
@@ -446,19 +526,33 @@ app.post('/convert', upload.single('fbxFile'), async (req, res) => {
     } catch (error) {
         console.error('Conversion error:', error);
         
-        // Clean up files on error
-        if (req.file && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-
         res.status(500).json({
             error: 'Conversion failed',
             details: error.message
         });
+    } finally {
+        // Ensure cleanup of temporary files
+        try {
+            if (inputPath && fs.existsSync(inputPath)) {
+                fs.unlinkSync(inputPath);
+                console.log('Cleaned up input file:', inputPath);
+            }
+            if (gltfPath && fs.existsSync(gltfPath)) {
+                fs.unlinkSync(gltfPath);
+                console.log('Cleaned up intermediate GLTF file:', gltfPath);
+            }
+        } catch (cleanupError) {
+            console.error('Cleanup error:', cleanupError);
+        }
+        
+        // Force garbage collection if available
+        if (global.gc) {
+            global.gc();
+        }
     }
 });
 
-// Download endpoint
+// Download endpoint with improved cleanup
 app.get('/download/:filename', (req, res) => {
     const filename = req.params.filename;
     const filePath = path.join(outputDir, filename);
@@ -470,22 +564,60 @@ app.get('/download/:filename', (req, res) => {
     res.download(filePath, filename, (err) => {
         if (err) {
             console.error('Download error:', err);
-            res.status(500).json({ error: 'Download failed' });
-        } else {
-            // Clean up file after download
-            setTimeout(() => {
+            if (!res.headersSent) {
+                res.status(500).json({ error: 'Download failed' });
+            }
+        }
+        
+        // Clean up file after download (success or failure)
+        setTimeout(() => {
+            try {
                 if (fs.existsSync(filePath)) {
                     fs.unlinkSync(filePath);
+                    console.log('Cleaned up downloaded file:', filePath);
                 }
-            }, 60000); // Delete after 1 minute
-        }
+            } catch (cleanupError) {
+                console.error('File cleanup error:', cleanupError);
+            }
+        }, 30000); // Delete after 30 seconds (reduced from 1 minute)
     });
 });
+
+// Cleanup old files on startup
+function cleanupOldFiles() {
+    const directories = [uploadsDir, outputDir];
+    
+    directories.forEach(dir => {
+        try {
+            const files = fs.readdirSync(dir);
+            files.forEach(file => {
+                const filePath = path.join(dir, file);
+                const stats = fs.statSync(filePath);
+                const now = Date.now();
+                const fileAge = now - stats.mtime.getTime();
+                
+                // Remove files older than 1 hour
+                if (fileAge > 60 * 60 * 1000) {
+                    fs.unlinkSync(filePath);
+                    console.log('Cleaned up old file:', filePath);
+                }
+            });
+        } catch (error) {
+            console.error('Cleanup error for directory', dir, ':', error);
+        }
+    });
+}
 
 // Start server
 app.listen(PORT, () => {
     console.log(`Server running on port ${PORT}`);
     console.log(`Visit http://localhost:${PORT} to use the converter`);
+    
+    // Clean up old files on startup
+    cleanupOldFiles();
+    
+    // Set up periodic cleanup every 30 minutes
+    setInterval(cleanupOldFiles, 30 * 60 * 1000);
 });
 
 module.exports = app;

@@ -4,7 +4,7 @@
   "description": "Web UI for converting FBX animations to VRMA format",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
+    "start": "node --max-old-space-size=512 server.js",
     "build": "npm install && chmod +x FBX2glTF-linux-x64 || echo 'Binary not found yet'",
     "postinstall": "curl -L -o FBX2glTF-linux-x64 https://github.com/facebookincubator/FBX2glTF/releases/download/v0.9.7/FBX2glTF-linux-x64 && chmod +x FBX2glTF-linux-x64"
   },
